@@ -31,12 +31,23 @@ export class JobFetcherService {
         }),
       );
 
-      // Flatten and deduplicate results
-      // const deduplicatedJobs = this.deduplicateJobs(allJobs.flat());
-
       return allJobs.flat();
     } catch (error: any) {
       throw new AppError(`Failed to fetch jobs: ${error.message}`, 500);
+    }
+  }
+
+  async fetchGoogleJobs(query: string) {
+    try {
+      const jobs = await scrapeJobs({
+        searchTerm: query,
+        resultsWanted: 20,
+        location: "worldwide",
+      });
+
+      return jobs;
+    } catch (error: any) {
+      throw new AppError(`Failed to fetch Google jobs: ${error.message}`, 500);
     }
   }
 
@@ -48,15 +59,4 @@ export class JobFetcherService {
     return batches;
   }
 
-  private deduplicateJobs(jobs: any[]): any[] {
-    const seen = new Set();
-    return jobs.filter((job) => {
-      const id = job.id || job.title + job.company + job.location;
-      if (seen.has(id)) {
-        return false;
-      }
-      seen.add(id);
-      return true;
-    });
-  }
 }

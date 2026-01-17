@@ -3,7 +3,7 @@ import { getJobs } from './job.controller';
 
 const router = Router();
 
-router.get('/jobs', getJobs);
+router.post('/jobs', getJobs);
 
 export default router;
 
