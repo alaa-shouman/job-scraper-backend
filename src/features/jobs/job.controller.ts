@@ -23,6 +23,7 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction) =
     res.status(200).json({
       message: "Jobs fetched successfully",
       length: linkedinIndeedJobs.length + googleJobs.length,
+      jobs:googleJobs.concat(linkedinIndeedJobs),
       googleJobs: {
         source: "fetchGoogleJobs",
         total: googleJobs.length,
