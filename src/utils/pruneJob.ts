@@ -47,8 +47,8 @@ function asNumber(v: unknown): number | undefined {
 export function pruneJob(raw: any): Job {
   const source = normaliseSource(raw.source ?? raw.site ?? raw.job_source ?? raw.job_provider);
 
-  // Prefer job_url (ts-jobspy canonical field), fall back to url
-  const jobUrl: string | undefined = typeof raw.job_url === "string" && raw.job_url ? raw.job_url : typeof raw.url === "string" && raw.url ? raw.url : undefined;
+  // Prefer jobUrl (ts-jobspy camelCase), fall back to snake_case variants
+  const jobUrl: string | undefined = typeof raw.jobUrl === "string" && raw.jobUrl ? raw.jobUrl : typeof raw.job_url === "string" && raw.job_url ? raw.job_url : typeof raw.url === "string" && raw.url ? raw.url : undefined;
 
   // Build a stable id
   let id: string = typeof raw.id === "string" && raw.id ? raw.id : typeof raw.job_id === "string" && raw.job_id ? raw.job_id : "";
@@ -59,27 +59,27 @@ export function pruneJob(raw: any): Job {
     id = `${source}-${Math.random().toString(36).slice(2, 14)}`;
   }
 
-  const companyName: string | undefined = raw.company_name ?? raw.company ?? undefined;
-  const isRemote: boolean | undefined = raw.is_remote ?? raw.remote ?? undefined;
+  const companyName: string | undefined = raw.companyName ?? raw.company_name ?? raw.company ?? undefined;
+  const isRemote: boolean | undefined = raw.isRemote ?? raw.is_remote ?? raw.remote ?? undefined;
 
   return {
     id,
     title: raw.title ?? raw.job_title ?? "",
     company: companyName,
     company_name: companyName,
-    location: raw.location ?? raw.job_location ?? undefined,
+    location: typeof raw.location === "object" && raw.location !== null ? (raw.location.city ?? raw.location.state ?? raw.location.country ?? undefined) : (raw.location ?? raw.job_location ?? undefined),
     description: raw.description ?? raw.job_description ?? undefined,
     url: jobUrl,
     job_url: jobUrl,
     source,
     is_remote: isRemote,
     remote: isRemote,
-    company_logo: raw.company_logo ?? raw.company_logo_url ?? undefined,
-    date_posted: normaliseDate(raw.date_posted ?? raw.posted_date),
-    min_amount: asNumber(raw.min_amount),
-    max_amount: asNumber(raw.max_amount),
+    company_logo: raw.companyLogo ?? raw.company_logo ?? raw.company_logo_url ?? undefined,
+    date_posted: normaliseDate(raw.datePosted ?? raw.date_posted ?? raw.posted_date),
+    min_amount: asNumber(raw.minAmount ?? raw.min_amount),
+    max_amount: asNumber(raw.maxAmount ?? raw.max_amount),
     currency: typeof raw.currency === "string" ? raw.currency : undefined,
     pay_period: typeof raw.pay_period === "string" ? raw.pay_period : typeof raw.interval === "string" ? raw.interval : undefined,
-    job_type: typeof raw.job_type === "string" ? raw.job_type : typeof raw.employment_type === "string" ? raw.employment_type : undefined,
+    job_type: typeof raw.jobType === "string" ? raw.jobType : typeof raw.job_type === "string" ? raw.job_type : typeof raw.employment_type === "string" ? raw.employment_type : undefined,
   };
 }
