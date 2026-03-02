@@ -34,6 +34,9 @@ export class JobFetcherService {
   async fetchLinkedInIndeed(keywords: string[], location = "Lebanon"): Promise<unknown[]> {
     const batches = splitIntoBatches(keywords, BATCH_SIZE);
 
+    // Extract country portion for Indeed (e.g. "Beirut, Lebanon" → "Lebanon")
+    const countryIndeed = location.includes(",") ? location.split(",").pop()!.trim() : location;
+
     const results = await Promise.allSettled(
       batches.map((batch) =>
         withTimeout(
@@ -43,7 +46,7 @@ export class JobFetcherService {
             location,
             resultsWanted: RESULTS_PER_CALL,
             hoursOld: 24,
-            countryIndeed: "Lebanon",
+            countryIndeed,
             linkedinFetchDescription: true,
             isRemote: false,
           }),
@@ -68,16 +71,18 @@ export class JobFetcherService {
    * Scrape Google Jobs for a free-text query.
    * Returns an empty array on timeout or failure rather than throwing.
    */
-  async fetchGoogle(query: string): Promise<unknown[]> {
+  async fetchGoogle(query: string, location?: string): Promise<unknown[]> {
+    // Embed location in the search term so Google Jobs scopes results to the area
+    const searchTerm = location ? `${query} in ${location}` : query;
     try {
       const jobs = await withTimeout(
         scrapeJobs({
-          searchTerm: query,
+          searchTerm,
           resultsWanted: RESULTS_PER_CALL,
-          location: "worldwide",
+          location: location ?? "worldwide",
         }),
         SCRAPE_TIMEOUT_MS,
-        `google jobs [${query}]`,
+        `google jobs [${searchTerm}]`,
       );
       return jobs as unknown[];
     } catch (err: unknown) {

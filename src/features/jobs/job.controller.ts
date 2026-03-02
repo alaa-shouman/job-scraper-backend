@@ -1,11 +1,35 @@
 import { Request, Response, NextFunction } from "express";
-import { JobFetcherService } from "./jobFetcher.services";
+import { JobFetcherService } from "./job.services";
 import { FetchJobsParams, Job, JobsResponse } from "./job.type";
 import { pruneJob } from "../../utils/pruneJob";
 import { buildCacheKey, jobsCache } from "../../lib/cache";
 import { AppError } from "../../utils/AppError";
 
 const fetcher = new JobFetcherService();
+
+// ─── Location filter ─────────────────────────────────────────────────────────
+
+/**
+ * Soft-filter: keep a job when its location field overlaps with the requested
+ * location, when the job has no location info (can't tell), or when it is
+ * marked remote.  This removes results that are clearly in the wrong region
+ * without being too aggressive.
+ */
+function filterByLocation(jobs: Job[], location?: string): Job[] {
+  if (!location) return jobs;
+  const parts = location
+    .toLowerCase()
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  return jobs.filter((job) => {
+    if (job.is_remote || job.remote) return true;
+    const jobLoc = (job.location ?? "").toLowerCase();
+    if (!jobLoc) return true; // no location info — keep it
+    return parts.some((part) => jobLoc.includes(part));
+  });
+}
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
@@ -45,7 +69,7 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction): 
     }
 
     // ── Parallel scrape ───────────────────────────────────────────────────────
-    const [rawLinkedInIndeed, rawGoogle] = await Promise.all([hasKeywords ? fetcher.fetchLinkedInIndeed(keywords!, location) : Promise.resolve([]), hasQuery ? fetcher.fetchGoogle(query!) : Promise.resolve([])]);
+    const [rawLinkedInIndeed, rawGoogle] = await Promise.all([hasKeywords ? fetcher.fetchLinkedInIndeed(keywords!, location) : Promise.resolve([]), hasQuery ? fetcher.fetchGoogle(query!, location) : Promise.resolve([])]);
 
     if (rawLinkedInIndeed.length === 0 && rawGoogle.length === 0) {
       throw new AppError("Failed to fetch jobs: all sources returned empty results", 500);
@@ -56,7 +80,10 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction): 
     const liJobs: Job[] = rawLinkedInIndeed.map(pruneJob);
 
     // ── Deduplicate (Google first, then LinkedIn/Indeed) ──────────────────────
-    const jobs = deduplicateByUrl([...googleJobs, ...liJobs]);
+    const deduped = deduplicateByUrl([...googleJobs, ...liJobs]);
+
+    // ── Location filter ───────────────────────────────────────────────────────
+    const jobs = filterByLocation(deduped, location);
 
     // ── Build response ────────────────────────────────────────────────────────
     const payload: JobsResponse = {
