@@ -26,11 +26,7 @@ function splitIntoBatches<T>(arr: T[], size: number): T[][] {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export class JobFetcherService {
-  /**
-   * Scrape LinkedIn + Indeed for an array of keywords.
-   * Keywords are batched into groups of BATCH_SIZE and scraped concurrently.
-   * Individual batch failures are swallowed — the rest still return.
-   */
+
   async fetchLinkedInIndeed(keywords: string[], location = "Lebanon"): Promise<unknown[]> {
     const batches = splitIntoBatches(keywords, BATCH_SIZE);
 

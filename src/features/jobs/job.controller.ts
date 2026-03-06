@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import { JobFetcherService } from "./job.services";
 import { FetchJobsParams, Job, JobsResponse } from "./job.type";
 import { pruneJob } from "../../utils/pruneJob";
-import { buildCacheKey, jobsCache } from "../../lib/cache";
 import { AppError } from "../../utils/AppError";
 
 const fetcher = new JobFetcherService();
@@ -58,16 +57,6 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction): 
       return;
     }
 
-    // ── Cache check ───────────────────────────────────────────────────────────
-    const cacheKey = buildCacheKey(req.body as Record<string, unknown>);
-    const cached = jobsCache.get(cacheKey);
-
-    if (cached) {
-      res.setHeader("X-Cache", "HIT");
-      res.status(200).json(cached);
-      return;
-    }
-
     // ── Parallel scrape ───────────────────────────────────────────────────────
     const [rawLinkedInIndeed, rawGoogle] = await Promise.all([hasKeywords ? fetcher.fetchLinkedInIndeed(keywords!, location) : Promise.resolve([]), hasQuery ? fetcher.fetchGoogle(query!, location) : Promise.resolve([])]);
 
@@ -92,8 +81,6 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction): 
       jobs,
     };
 
-    // ── Cache store ───────────────────────────────────────────────────────────
-    jobsCache.set(cacheKey, payload);
 
     res.setHeader("X-Cache", "MISS");
     res.status(200).json(payload);
