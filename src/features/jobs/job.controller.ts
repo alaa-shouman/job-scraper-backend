@@ -1,90 +1,79 @@
 import { Request, Response, NextFunction } from "express";
-import { JobFetcherService } from "./job.services";
-import { FetchJobsParams, Job, JobsResponse } from "./job.type";
-import { pruneJob } from "../../utils/pruneJob";
+import { fetchAndFilterJobs } from "./job.services";
+import { Job, JobSearchRequest, JobsResponse } from "./job.type";
 import { AppError } from "../../utils/AppError";
+import { jobsCache, buildCacheKey } from "../../lib/cache";
 
-const fetcher = new JobFetcherService();
-
-// ─── Location filter ─────────────────────────────────────────────────────────
-
-/**
- * Soft-filter: keep a job when its location field overlaps with the requested
- * location, when the job has no location info (can't tell), or when it is
- * marked remote.  This removes results that are clearly in the wrong region
- * without being too aggressive.
- */
-function filterByLocation(jobs: Job[], location?: string): Job[] {
-  if (!location) return jobs;
-  const parts = location
-    .toLowerCase()
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  return jobs.filter((job) => {
-    if (job.is_remote || job.remote) return true;
-    const jobLoc = (job.location ?? "").toLowerCase();
-    if (!jobLoc) return true; // no location info — keep it
-    return parts.some((part) => jobLoc.includes(part));
-  });
-}
-
-// ─── Deduplication ────────────────────────────────────────────────────────────
-
-function deduplicateByUrl(jobs: Job[]): Job[] {
-  const seen = new Set<string>();
-  return jobs.filter((job) => {
-    const key = job.job_url ?? job.url ?? job.id;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
-
-export const getJobs = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export async function getJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { keywords, location, query } = req.body as FetchJobsParams;
+    const body = req.body as JobSearchRequest;
 
-    // ── Validation ────────────────────────────────────────────────────────────
-    const hasKeywords = Array.isArray(keywords) && keywords.length > 0;
-    const hasQuery = typeof query === "string" && query.trim().length > 0;
-
-    if (!hasKeywords && !hasQuery) {
-      res.status(400).json({ message: "Keywords or query are required to fetch jobs." });
-      return;
+    // ── Input validation ──────────────────────────────────────────────────────
+    if (body.radius != null && (typeof body.radius !== "number" || body.radius < 1 || body.radius > 500)) {
+      throw new AppError("radius must be a number between 1 and 500", 400);
     }
 
-    // ── Parallel scrape ───────────────────────────────────────────────────────
-    const [rawLinkedInIndeed, rawGoogle] = await Promise.all([hasKeywords ? fetcher.fetchLinkedInIndeed(keywords!, location) : Promise.resolve([]), hasQuery ? fetcher.fetchGoogle(query!, location) : Promise.resolve([])]);
-
-    if (rawLinkedInIndeed.length === 0 && rawGoogle.length === 0) {
-      throw new AppError("Failed to fetch jobs: all sources returned empty results", 500);
+    if (body.locationMode === "near" && body.radius == null) {
+      throw new AppError('radius is required when locationMode is "near"', 400);
     }
 
-    // ── Prune + normalise ─────────────────────────────────────────────────────
-    const googleJobs: Job[] = rawGoogle.map(pruneJob);
-    const liJobs: Job[] = rawLinkedInIndeed.map(pruneJob);
+    if (body.page != null && (!Number.isInteger(body.page) || body.page < 1)) {
+      throw new AppError("page must be a positive integer", 400);
+    }
 
-    // ── Deduplicate (Google first, then LinkedIn/Indeed) ──────────────────────
-    const deduped = deduplicateByUrl([...googleJobs, ...liJobs]);
+    if (body.limit != null && (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 100)) {
+      throw new AppError("limit must be a positive integer between 1 and 100", 400);
+    }
 
-    // ── Location filter ───────────────────────────────────────────────────────
-    const jobs = filterByLocation(deduped, location);
+    if (body.sortBy != null && !["relevance", "date", "salary"].includes(body.sortBy)) {
+      throw new AppError("sortBy must be one of: relevance, date, salary", 400);
+    }
 
-    // ── Build response ────────────────────────────────────────────────────────
-    const payload: JobsResponse = {
-      message: "Jobs fetched successfully",
-      total_jobs: jobs.length,
-      jobs,
+    if (body.resultsWanted != null && (typeof body.resultsWanted !== "number" || body.resultsWanted < 1 || body.resultsWanted > 100)) {
+      throw new AppError("resultsWanted must be a number between 1 and 100", 400);
+    }
+
+    // ── Pagination params ─────────────────────────────────────────────────────
+    const page = Math.max(1, body.page ?? 1);
+    const limit = Math.min(100, Math.max(1, body.limit ?? 10));
+
+    // ── Cache lookup ──────────────────────────────────────────────────────────
+    // Exclude page/limit from the cache key so different pages share the same
+    // cached result set and only one upstream scrape is needed per search.
+    const cacheBody = { ...body } as Record<string, unknown>;
+    delete cacheBody["page"];
+    delete cacheBody["limit"];
+    const cacheKey = buildCacheKey(cacheBody);
+
+    let allJobs: Job[];
+    const cached = jobsCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      allJobs = cached;
+      res.setHeader("X-Cache", "HIT");
+    } else {
+      allJobs = await fetchAndFilterJobs(body);
+      jobsCache.set(cacheKey, allJobs);
+      res.setHeader("X-Cache", "MISS");
+    }
+
+    // ── Paginate ──────────────────────────────────────────────────────────────
+    const total = allJobs.length;
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 1;
+    const start = (page - 1) * limit;
+    const pageJobs = allJobs.slice(start, start + limit);
+
+    const response: JobsResponse = {
+      message: pageJobs.length ? "Jobs fetched successfully" : "No jobs found",
+      total_jobs: total,
+      total_pages: totalPages,
+      page,
+      limit,
+      jobs: pageJobs,
     };
 
-
-    res.setHeader("X-Cache", "MISS");
-    res.status(200).json(payload);
-  } catch (error) {
-    next(error);
+    res.json(response);
+  } catch (err) {
+    next(err);
   }
-};
+}

@@ -1,4 +1,4 @@
-import { JobsResponse } from "../features/jobs/job.type";
+import { Job } from "../features/jobs/job.type";
 
 // ─── TTL Cache ────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ class TTLCache<T> {
 }
 
 // Singleton cache — 10-minute TTL
-export const jobsCache = new TTLCache<JobsResponse>(600);
+export const jobsCache = new TTLCache<Job[]>(600);
 
 // Periodically remove stale entries every 5 minutes
 setInterval(() => jobsCache.evict(), 5 * 60 * 1_000).unref();

@@ -5,17 +5,25 @@ import cors from "cors";
 import compression from "compression";
 import dotenv from "dotenv";
 import { errorHandler } from "./middleware/errorHandler";
+import { rateLimit } from "./middleware/rateLimit";
 import jobRoutes from "./features/jobs/job.routes";
 
 dotenv.config();
 
-// ─── Keep-Alive agents ────────────────────────────────────────────────────────
-// Reuse TCP connections across upstream scrape calls within the same process.
 http.globalAgent = new http.Agent({ keepAlive: true });
 https.globalAgent = new https.Agent({ keepAlive: true });
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 const app = express();
+
+// ─── Security headers ────────────────────────────────────────────────────────
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 // ─── Compression ─────────────────────────────────────────────────────────────
 // Gzip/Brotli all responses — cuts job description payloads by ~65 %.
@@ -35,7 +43,7 @@ app.use(
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api", jobRoutes);
+app.use("/api", rateLimit, jobRoutes);
 
 app.get("/health", (_req: Request, res: Response) => {
   res.send("server is running");
