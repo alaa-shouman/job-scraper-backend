@@ -67,7 +67,7 @@ export function pruneJob(raw: any): Job {
     title: raw.title ?? raw.job_title ?? "",
     company: companyName,
     company_name: companyName,
-    location: typeof raw.location === "object" && raw.location !== null ? (raw.location.city ?? raw.location.state ?? raw.location.country ?? undefined) : (raw.location ?? raw.job_location ?? undefined),
+    location: typeof raw.location === "object" && raw.location !== null ? [raw.location.city, raw.location.state, raw.location.country].filter(Boolean).join(", ") || undefined : (raw.location ?? raw.job_location ?? undefined),
     description: raw.description ?? raw.job_description ?? undefined,
     url: jobUrl,
     job_url: jobUrl,
@@ -81,5 +81,6 @@ export function pruneJob(raw: any): Job {
     currency: typeof raw.currency === "string" ? raw.currency : undefined,
     pay_period: typeof raw.pay_period === "string" ? raw.pay_period : typeof raw.interval === "string" ? raw.interval : undefined,
     job_type: typeof raw.jobType === "string" ? raw.jobType : typeof raw.job_type === "string" ? raw.job_type : typeof raw.employment_type === "string" ? raw.employment_type : undefined,
+    job_level: typeof raw.jobLevel === "string" ? raw.jobLevel : typeof raw.job_level === "string" ? raw.job_level : undefined,
   };
 }
