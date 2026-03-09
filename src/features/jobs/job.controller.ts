@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import { fetchAndFilterJobs } from "./job.services";
 import { Job, JobSearchRequest, JobsResponse } from "./job.type";
 import { AppError } from "../../utils/AppError";
-import { jobsCache, buildCacheKey } from "../../lib/cache";
 
 export async function getJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -37,25 +36,7 @@ export async function getJobs(req: Request, res: Response, next: NextFunction): 
     const page = Math.max(1, body.page ?? 1);
     const limit = Math.min(100, Math.max(1, body.limit ?? 10));
 
-    // ── Cache lookup ──────────────────────────────────────────────────────────
-    // Exclude page/limit from the cache key so different pages share the same
-    // cached result set and only one upstream scrape is needed per search.
-    const cacheBody = { ...body } as Record<string, unknown>;
-    delete cacheBody["page"];
-    delete cacheBody["limit"];
-    const cacheKey = buildCacheKey(cacheBody);
-
-    let allJobs: Job[];
-    const cached = jobsCache.get(cacheKey);
-
-    if (cached !== undefined) {
-      allJobs = cached;
-      res.setHeader("X-Cache", "HIT");
-    } else {
-      allJobs = await fetchAndFilterJobs(body);
-      jobsCache.set(cacheKey, allJobs);
-      res.setHeader("X-Cache", "MISS");
-    }
+    const allJobs: Job[] = await fetchAndFilterJobs(body);
 
     // ── Paginate ──────────────────────────────────────────────────────────────
     const total = allJobs.length;

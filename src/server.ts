@@ -35,7 +35,6 @@ app.use(
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
-    exposedHeaders: ["X-Cache"],
   }),
 );
 
