@@ -32,6 +32,14 @@ export async function getJobs(req: Request, res: Response, next: NextFunction): 
       throw new AppError("resultsWanted must be a number between 1 and 100", 400);
     }
 
+    if (body.googleResultsWanted != null && (typeof body.googleResultsWanted !== "number" || body.googleResultsWanted < 1 || body.googleResultsWanted > 100)) {
+      throw new AppError("googleResultsWanted must be a number between 1 and 100", 400);
+    }
+
+    if (body.googleQuery != null && body.googleQuery !== false && typeof body.googleQuery !== "string") {
+      throw new AppError("googleQuery must be a string or false", 400);
+    }
+
     // ── Pagination params ─────────────────────────────────────────────────────
     const page = Math.max(1, body.page ?? 1);
     const limit = Math.min(100, Math.max(1, body.limit ?? 10));

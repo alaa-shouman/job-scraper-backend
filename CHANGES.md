@@ -359,3 +359,98 @@ Content-Type: application/json
 ```
 
 To fetch page 2 of the same search, send the identical body with `"page": 2`. The response will be served from cache (`X-Cache: HIT`) with no additional scraping.
+
+---
+
+# Update — March 9, 2026
+
+## Cache removed
+
+The in-memory TTL cache has been removed. Every request now performs a live scrape. The `X-Cache` response header is no longer sent.
+
+---
+
+## New: Google Jobs scraping (parallel with LinkedIn/Indeed)
+
+The backend now scrapes **3 sources in parallel**:
+
+- **LinkedIn + Indeed** — freshest listings (primary)
+- **Google Jobs** — wider coverage, aggregates from dozens of job boards
+
+All results are merged, deduplicated by URL, filtered, and sorted. Google scraping is automatic — if it fails, LinkedIn/Indeed results are still returned.
+
+---
+
+## New request fields
+
+| Field                 | Type              | Default                  | Description                                                                 |
+| --------------------- | ----------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `googleQuery`         | `string \| false` | Same as `query`          | Separate search term for Google Jobs. Set `false` to skip Google entirely.  |
+| `googleResultsWanted` | `number (1–100)`  | Same as `resultsWanted`  | How many results to request from Google specifically.                       |
+
+---
+
+## Changed defaults
+
+| Field            | Old default | New default |
+| ---------------- | ----------- | ----------- |
+| `resultsWanted`  | `20`        | `25`        |
+
+---
+
+## Improved location filtering
+
+Location filtering is now stricter and more precise:
+
+- **`locationMode: "exact"`** — at least one part of your requested location (city, state, country) must appear as a substring in the job's location. Jobs with no location info are **dropped**.
+- **`locationMode: "near"`** — more lenient word-overlap matching. Jobs with no location info are **kept**. Common noise words like "metropolitan", "area", "greater", "region" are stripped before comparison.
+- **Remote jobs always pass** both modes.
+
+---
+
+## No other breaking changes
+
+All existing request fields and the response shape are unchanged. If you send the same request body as before, you'll just get **more results** from Google Jobs being included automatically.
+
+---
+
+## New validation errors
+
+| Scenario | Message |
+|---|---|
+| `googleResultsWanted` out of range | `"googleResultsWanted must be a number between 1 and 100"` |
+| `googleQuery` wrong type | `"googleQuery must be a string or false"` |
+
+---
+
+## Updated complete request example (maximum coverage)
+
+```json
+POST /api/jobs
+Content-Type: application/json
+
+{
+  "sites": ["linkedin", "indeed"],
+  "query": "frontend engineer",
+  "googleQuery": "frontend engineer react jobs",
+  "exactKeywords": ["react", "typescript"],
+  "booleanQuery": "react AND (next.js OR vite) NOT junior",
+  "location": "San Francisco, CA",
+  "locationMode": "near",
+  "radius": 25,
+  "radiusUnit": "miles",
+  "remoteOnly": false,
+  "excludeCountries": ["india"],
+  "jobTypes": ["fulltime", "contract"],
+  "minSalary": 120000,
+  "maxSalary": 200000,
+  "currency": "USD",
+  "experienceLevels": ["mid", "senior"],
+  "sortBy": "date",
+  "resultsWanted": 50,
+  "googleResultsWanted": 50,
+  "hoursOld": 48,
+  "page": 1,
+  "limit": 20
+}
+```
