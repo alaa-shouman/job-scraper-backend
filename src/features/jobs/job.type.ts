@@ -2,14 +2,11 @@ export interface Job {
   id: string;
   title: string;
   company?: string;
-  company_name?: string;
   location?: string;
   description?: string;
-  url?: string;
   job_url?: string;
   source: string;
   is_remote?: boolean;
-  remote?: boolean;
   company_logo?: string;
   date_posted?: string;
   min_amount?: number;
@@ -18,7 +15,6 @@ export interface Job {
   pay_period?: string;
   job_type?: string;
   job_level?: string;
-  relevance_score?: number;
 }
 
 export interface JobsResponse {
@@ -30,29 +26,34 @@ export interface JobsResponse {
   jobs: Job[];
 }
 
-export type JobTypeFilter = "fulltime" | "parttime" | "contract" | "internship" | "temporary" | "freelance" | "perdiem" | "other";
+export type JobTypeFilter =
+  | "fulltime"
+  | "parttime"
+  | "contract"
+  | "internship"
+  | "temporary"
+  | "freelance"
+  | "perdiem"
+  | "other";
 
-export type ExperienceLevel = "entry" | "junior" | "mid" | "senior" | "lead" | "executive";
+export type ExperienceLevel =
+  | "entry"
+  | "junior"
+  | "mid"
+  | "senior"
+  | "lead"
+  | "executive";
 
 export type SortBy = "relevance" | "date" | "salary";
 
 export type LocationMode = "exact" | "near";
 
 export interface JobSearchRequest {
-  /** Job board sources for LinkedIn/Indeed. Defaults to both. */
+  /** Job board sources. Defaults to both LinkedIn and Indeed. */
   sites?: ("linkedin" | "indeed")[];
 
-  /** Free-text query forwarded to LinkedIn/Indeed scrapers. */
+  /** Free-text query forwarded to the scrapers. */
   query?: string;
-
-  /**
-   * Separate query for Google Jobs scraper.
-   * Google Jobs aggregates listings from many boards, so this gives wider
-   * coverage while LinkedIn/Indeed provide the freshest results.
-   * If omitted, the main `query` is used for Google as well.
-   * Set to `false` (or omit along with `query`) to skip Google entirely.
-   */
-  googleQuery?: string | false;
 
   /** Post-scrape: every keyword must appear as a whole word in title or description. */
   exactKeywords?: string[];
@@ -77,11 +78,8 @@ export interface JobSearchRequest {
    */
   locationMode?: LocationMode;
 
-  /** Search radius. Required when locationMode = 'near'. Range: 1–500. */
+  /** Search radius in miles. Required when locationMode = 'near'. Range: 1–500. */
   radius?: number;
-
-  /** Unit for the radius value. Default: 'miles'. */
-  radiusUnit?: "miles" | "km";
 
   /** Only return remote jobs. */
   remoteOnly?: boolean;
@@ -92,10 +90,10 @@ export interface JobSearchRequest {
   /** Restrict to specific job types (applied post-scrape). */
   jobTypes?: JobTypeFilter[];
 
-  /** Minimum annual salary (normalised from hourly/monthly when needed). */
+  /** Minimum annual salary. */
   minSalary?: number;
 
-  /** Maximum annual salary (normalised from hourly/monthly when needed). */
+  /** Maximum annual salary. */
   maxSalary?: number;
 
   /** ISO 4217 currency code, e.g. "USD". Excludes jobs with a different listed currency. */
@@ -116,16 +114,6 @@ export interface JobSearchRequest {
   /** Total raw results to request from each scraper (before filtering). Default: 25. Max: 100. */
   resultsWanted?: number;
 
-  /** Total raw results to request from Google specifically. Default: same as resultsWanted. Max: 100. */
-  googleResultsWanted?: number;
-
   /** Only return jobs posted within the last N hours. */
   hoursOld?: number;
-}
-
-/** @deprecated Use JobSearchRequest instead */
-export interface FetchJobsParams {
-  keywords?: string[];
-  location?: string;
-  query?: string;
 }

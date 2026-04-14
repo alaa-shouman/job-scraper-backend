@@ -1,156 +1,169 @@
-# Job Scraper Backend — API Report
+# API Report
 
-**Base URL:** `http://localhost:3000`
+## Base URL
+```
+http://localhost:3000
+```
 
 ---
 
-## Health Check
+## Endpoints
 
 ### `GET /health`
+Returns a plain-text confirmation that the server is running.
 
-Verifies the server is running.
-
-**Request:** No parameters required.
-
-**Response — `200 OK`**
+**Response**
 ```
+200 OK
 server is running
 ```
 
 ---
 
-## Jobs
-
 ### `POST /api/jobs`
+Scrapes LinkedIn and Indeed for jobs matching the given criteria, applies post-scrape filters, and returns a paginated result.
 
-Scrapes job listings from LinkedIn, Indeed, and/or Google Jobs depending on the provided body parameters. Keywords trigger a LinkedIn + Indeed scrape; a `query` string triggers a Google Jobs scrape. Both can be sent simultaneously.
+Results are cached for 10 minutes — identical requests within that window are served from cache without hitting the scrapers.
 
----
+#### Request body (`application/json`)
 
-### Request Body
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `sites` | `("linkedin" \| "indeed")[]` | `["linkedin","indeed"]` | Scrapers to query |
+| `query` | `string` | — | Free-text search term forwarded to scrapers |
+| `exactKeywords` | `string[]` | — | Post-scrape: every word must appear as a whole word in title or description |
+| `fuzzyKeywords` | `string[]` | — | Post-scrape: every word must appear as a substring in title or description |
+| `booleanQuery` | `string` | — | Boolean expression: `AND`, `OR`, `NOT`, parentheses, quoted phrases |
+| `location` | `string` | — | Location string, e.g. `"New York, NY"` |
+| `locationMode` | `"exact" \| "near"` | `"exact"` | `"near"` expands search using `radius` |
+| `radius` | `number` | — | Search radius in miles (required when `locationMode = "near"`, 1–500) |
+| `remoteOnly` | `boolean` | — | Only return remote jobs |
+| `excludeCountries` | `string[]` | — | Exclude jobs whose location contains any of these country names |
+| `jobTypes` | `JobTypeFilter[]` | — | Filter by job type (see values below) |
+| `minSalary` | `number` | — | Minimum annual salary |
+| `maxSalary` | `number` | — | Maximum annual salary |
+| `currency` | `string` | — | ISO 4217 currency code, e.g. `"USD"`. Excludes jobs with a different currency |
+| `experienceLevels` | `ExperienceLevel[]` | — | Filter by seniority (see values below) |
+| `page` | `number` | `1` | Page number (1-based) |
+| `limit` | `number` | `10` | Results per page (1–100) |
+| `sortBy` | `"relevance" \| "date" \| "salary"` | `"relevance"` | Sort order |
+| `resultsWanted` | `number` | `25` | Raw results to request from each scraper before filtering (max 100) |
+| `hoursOld` | `number` | — | Only return jobs posted within the last N hours |
 
-`Content-Type: application/json`
+#### `JobTypeFilter` values
+`"fulltime"` `"parttime"` `"contract"` `"internship"` `"temporary"` `"freelance"` `"perdiem"` `"other"`
 
-| Field       | Type       | Required                     | Description                                                                                        |
-|-------------|------------|------------------------------|----------------------------------------------------------------------------------------------------|
-| `keywords`  | `string[]` | Required if `query` is absent | Array of job keywords. Batched in groups of 5 and joined with `OR` for each scrape call.           |
-| `location`  | `string`   | Optional                     | Location filter for LinkedIn/Indeed scrape. Defaults to `"Lebanon"` if omitted.                   |
-| `query`     | `string`   | Required if `keywords` is absent | Free-text search string used for Google Jobs scrape. Searches worldwide with up to 20 results.  |
+#### `ExperienceLevel` values
+`"entry"` `"junior"` `"mid"` `"senior"` `"lead"` `"executive"`
 
-> At least one of `keywords` or `query` must be provided.
-
-**Example — keywords only:**
-```json
-{
-  "keywords": ["frontend developer", "react", "typescript"],
-  "location": "Lebanon"
-}
-```
-
-**Example — query only:**
-```json
-{
-  "query": "remote backend engineer node.js"
-}
-```
-
-**Example — both:**
-```json
-{
-  "keywords": ["UI designer"],
-  "location": "Beirut",
-  "query": "remote UI designer figma"
-}
-```
-
----
-
-### Scraping Behaviour
-
-| Source           | Triggered by | Sites scraped          | Results per batch | Hours old filter | Remote filter |
-|------------------|--------------|------------------------|-------------------|------------------|---------------|
-| LinkedIn + Indeed | `keywords`   | `indeed`, `linkedin`   | 20                | 24 hours         | `false` (default) |
-| Google Jobs      | `query`      | Google Jobs (worldwide) | 20               | None             | N/A           |
-
----
-
-### Responses
-
-#### `200 OK` — Jobs fetched successfully
-
+#### Success response (`200 OK`)
 ```json
 {
   "message": "Jobs fetched successfully",
-  "total_jobs": 35,
+  "total_jobs": 42,
+  "total_pages": 5,
+  "page": 1,
+  "limit": 10,
   "jobs": [
     {
-      "id": "...",
-      "title": "Frontend Developer",
+      "id": "abc123",
+      "title": "Frontend Engineer",
       "company": "Acme Corp",
-      "location": "Beirut, Lebanon",
+      "location": "New York, NY",
       "description": "...",
-      "url": "https://...",
-      "source": "linkedin"
+      "job_url": "https://linkedin.com/jobs/view/...",
+      "source": "linkedin",
+      "is_remote": false,
+      "company_logo": "https://...",
+      "date_posted": "2026-04-12",
+      "min_amount": 120000,
+      "max_amount": 160000,
+      "currency": "USD",
+      "pay_period": "yearly",
+      "job_type": "fulltime",
+      "job_level": "mid"
     }
   ]
 }
 ```
 
-| Field        | Type     | Description                                               |
-|--------------|----------|-----------------------------------------------------------|
-| `message`    | `string` | Always `"Jobs fetched successfully"`                      |
-| `total_jobs` | `number` | Combined count of all jobs from all sources               |
-| `jobs`       | `array`  | Google Jobs results first, followed by LinkedIn/Indeed results |
+#### Error responses
 
-> The shape of individual job objects is determined by the `ts-jobspy` library.
+| Status | Cause |
+|---|---|
+| `400` | Invalid input (page < 1, limit out of range, missing radius, resultsWanted > 100) |
+| `500` | Scraper error or unexpected server failure |
+
+```json
+{ "error": "radius is required when locationMode is 'near'" }
+```
 
 ---
 
-#### `400 Bad Request` — Missing keywords and query
+## Example requests
 
-Returned when neither `keywords` nor `query` is provided in the request body.
-
+### Basic keyword search
 ```json
+POST /api/jobs
 {
-  "message": "Keywords or query are required to fetch jobs."
+  "query": "frontend engineer",
+  "location": "Berlin",
+  "limit": 20
+}
+```
+
+### Boolean query with salary filter
+```json
+POST /api/jobs
+{
+  "query": "software engineer",
+  "booleanQuery": "react AND (typescript OR javascript) NOT senior",
+  "minSalary": 80000,
+  "currency": "USD",
+  "sortBy": "salary"
+}
+```
+
+### Remote-only, recent postings
+```json
+POST /api/jobs
+{
+  "query": "data engineer",
+  "remoteOnly": true,
+  "hoursOld": 48,
+  "experienceLevels": ["mid", "senior"],
+  "sortBy": "date"
+}
+```
+
+### Near-location search excluding a country
+```json
+POST /api/jobs
+{
+  "query": "product manager",
+  "location": "London",
+  "locationMode": "near",
+  "radius": 50,
+  "excludeCountries": ["India", "Pakistan"]
 }
 ```
 
 ---
 
-#### `500 Internal Server Error` — Scraping failure
+## Caching
+- Strategy: in-memory TTL cache
+- TTL: 10 minutes
+- Key: stable JSON hash of the full request body (arrays are sorted before hashing)
+- Cached responses include `"message": "Jobs fetched successfully (cached)"`
+- Stale entries are evicted every 5 minutes
 
-Returned when the underlying scraper throws an error (e.g. network failure, upstream site change).
+## Salary normalisation
+All salary amounts are normalised to **annual** figures before filtering and sorting:
 
-```json
-{
-  "error": "Failed to fetch jobs: <upstream error message>"
-}
-```
-
-In development mode (`NODE_ENV=development`), a `stack` field is also included:
-
-```json
-{
-  "error": "Failed to fetch jobs: <upstream error message>",
-  "stack": "Error: ...\n    at ..."
-}
-```
-
----
-
-## Error Response Schema (all endpoints)
-
-| Field   | Type     | Description                                           |
-|---------|----------|-------------------------------------------------------|
-| `error` | `string` | Human-readable error message                          |
-| `stack` | `string` | Stack trace — only present in `development` environment |
-
----
-
-## Summary Table
-
-| Method | Path        | Auth | Description                          |
-|--------|-------------|------|--------------------------------------|
-| GET    | `/health`   | None | Server health check                  |
-| POST   | `/api/jobs` | None | Scrape jobs from LinkedIn/Indeed/Google |
+| Pay period | Multiplier |
+|---|---|
+| Hourly | × 2080 (52 wks × 40 hrs) |
+| Daily | × 260 (52 wks × 5 days) |
+| Weekly | × 52 |
+| Monthly | × 12 |
+| Yearly | × 1 |

@@ -5,7 +5,6 @@ import cors from "cors";
 import compression from "compression";
 import dotenv from "dotenv";
 import { errorHandler } from "./middleware/errorHandler";
-import { rateLimit } from "./middleware/rateLimit";
 import jobRoutes from "./features/jobs/job.routes";
 
 dotenv.config();
@@ -42,11 +41,12 @@ app.use(
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api", rateLimit, jobRoutes);
 
 app.get("/health", (_req: Request, res: Response) => {
   res.send("server is running");
 });
+
+app.use("/api", jobRoutes);
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 app.use(errorHandler);
